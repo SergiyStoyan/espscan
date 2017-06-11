@@ -58,6 +58,20 @@ def scan(sourcename, servername, inputfile, outputfile):
 		if found:
 			continue
 		i += 1
+	p_xns = model_xn.findall('property')
+	o_xns = model_xn.findall('object')
+	for p_xn in p_xns:
+		if p_xn.find('pref'):
+			continue
+		if p_xn.find('type').text != 'Next':
+			continue
+		p_vref = re.sub('^.*/', '', p_xn.find('vref').text)
+		print '1-' + p_vref
+		for o_xn in o_xns:
+			if o_xn.find('name').text == p_vref:
+				ET.SubElement(p_xn, 'pref').text = o_xn.find('ref').text
+				print '2-' + o_xn.find('ref').text
+				break
 	#tree = ET.ElementTree(model_xn)
 	#tree.write(outputfile)
 	with open(outputfile, 'w') as f:
@@ -106,13 +120,23 @@ def read_FILE_TRIGGER(ls, i):
 			continue
 		m = re.search('^\\s*AGENT\\s+(.*)\\s', ls[i])
 		if m:
-			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': None, 'value': m.group(1)}
+			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': o['ref'], 'value': m.group(1)}
 			add2xml(model_xn, 'property', p)
 			continue			
 		m = re.search('^\\s*ENDJOB\\s', ls[i])
 		if m:
 			i += 1
 			break
+		m = re.search('^\\s*RUN\\s+REF\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue
+		m = re.search('^\\s*AFTER\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue		
 	add2xml(model_xn, 'object', o)
 	return True, i
 		
@@ -179,29 +203,29 @@ def read_JOB(ls, i):
 			continue
 		m = re.search('^\\s*AGENT\\s+(.*)\\s', ls[i])
 		if m:
-			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': None, 'value': m.group(1)}
+			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': o['ref'], 'value': m.group(1)}
 			add2xml(model_xn, 'property', p)
 			continue
 		m = re.search('^\\s*ENDJOB\\s', ls[i])
 		if m:
 			i += 1
 			break
-#		m = re.search('^\\s*RELEASE\\s+ADD\\((.*)\\)', ls[i])
-#		if m:
-#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': o['ref']}
-#			p['vref'] = jobref + '/' + m.group(1)
-#			add2xml(model_xn, 'property', p)
-#			continue
-#		m = re.search('^\\s*RUN\\s+REF\\s+(.*)\\s', ls[i])
-#		if m:
-#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
-#			add2xml(model_xn, 'property', p)
-#			continue
-#		m = re.search('^\\s*AFTER\\s+(.*)\\s', ls[i])
-#		if m:
-#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
-#			add2xml(model_xn, 'property', p)
-#			continue		
+		m = re.search('^\\s*RELEASE\\s+ADD\\((.*)\\)', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': o['ref']}
+			p['vref'] = jobref + '/' + m.group(1)
+			add2xml(model_xn, 'property', p)
+			continue
+		m = re.search('^\\s*RUN\\s+REF\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue
+		m = re.search('^\\s*AFTER\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue		
 #		m = re.search('^\\s*TEMPLATE\\s+(.*)', ls[i])
 #		if m:
 #			p = {'type': 'Template', 'ptype': 'DI Step', 'pref': o['ref']}
