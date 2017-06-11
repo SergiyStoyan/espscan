@@ -45,13 +45,16 @@ def scan(sourcename, servername, inputfile, outputfile):
 	while True:
 		if i >= len(ls):
 			break	
-		found, i = read_event(ls, i)
+		found, i = read_EVENT(ls, i)
 		if found:
 			continue
-		found, i = read_job(ls, i)
+		found, i = read_APPL(ls, i)
 		if found:
 			continue
-		found, i = read_step(ls, i)
+		found, i = read_JOB(ls, i)
+		if found:
+			continue
+		found, i = read_FILE_TRIGGER(ls, i)
 		if found:
 			continue
 		i += 1
@@ -59,8 +62,61 @@ def scan(sourcename, servername, inputfile, outputfile):
 	#tree.write(outputfile)
 	with open(outputfile, 'w') as f:
 		f.write(minidom.parseString(ET.tostring(model_xn, 'utf-8')).toprettyxml(indent='\t'))
-	
-def read_step(ls, i):
+
+
+def read_FILE_TRIGGER(ls, i):
+	start_i = i
+	while True:
+		m = re.search('^\\s*/\\*|^\\s*$', ls[i])
+		if not m:
+			break
+		i += 1		
+	m = re.search('^\\s*FILE_TRIGGER\\s+(.*)', ls[i])
+	if not m:
+		return False, i
+	o = {'type': 'DI Step', 'name': m.group(1), 'ext': 'FILE_TRIGGER', 'desc': '', 'notes': ''}
+	stepref = jobref + '/' + m.group(1)
+	o['ref'] = stepref
+	o['pref'] = jobref
+	for j in range (start_i, i):
+		m = re.search('^\\s*/\\*', ls[j])
+		if m:
+			o['desc'] = o['desc'] + ls[j]		
+	while True:
+		i += 1
+		if i >= len(ls):
+			break
+		m = re.search('^\\s*/\\*', ls[i])
+		if m:
+			o['desc'] = o['desc'] + ls[i]		
+			continue
+		m = re.search('^\\s*FILENAME\\s+(.*)', ls[i])
+		if m:
+			o['contents'] = m.group(1)
+			continue
+		m = re.search('^\\s*(EARLYSUB|AFTER)\\s+(.*)', ls[i])
+		if m:
+			o['notes'] = o['notes'] + ls[i]		
+			continue
+		m = re.search('^\\s*RELEASE\\s+ADD\\((.*)\\)', ls[i])
+		if m:
+			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': o['ref']}
+			p['vref'] = jobref + '/' + m.group(1)
+			add2xml(model_xn, 'property', p)
+			continue
+		m = re.search('^\\s*AGENT\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': None, 'value': m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue			
+		m = re.search('^\\s*ENDJOB\\s', ls[i])
+		if m:
+			i += 1
+			break
+	add2xml(model_xn, 'object', o)
+	return True, i
+		
+def read_JOB(ls, i):
 	start_i = i
 	while True:
 		m = re.search('^\\s*/\\*|^\\s*$', ls[i])
@@ -171,7 +227,7 @@ def read_step(ls, i):
 	add2xml(model_xn, 'property', schedule_p)
 	return True, i
 
-def read_job(ls, i):
+def read_APPL(ls, i):
 	start_i = i
 	while True:
 		m = re.search('^\\s*/\\*|^\\s*$', ls[i])
@@ -208,18 +264,8 @@ def read_job(ls, i):
 		break
 	add2xml(model_xn, 'object', o)
 	return True, i
-
-def read_comment(ls, i, o):
-	while True:
-		if i >= len(ls):
-			break
-		m = re.search('^\\s*/\\*', ls[i])
-		if m:
-			o['desc'] = o['desc'] + ls[i]			
-		i += 1
-	return i
 	
-def read_event(ls, i):
+def read_EVENT(ls, i):
 	m = re.search('^\\s*EVENT\\s', ls[i])
 	if not m:
 		return False, i
