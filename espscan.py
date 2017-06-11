@@ -11,6 +11,7 @@ from xml.dom import minidom
 repositoryref = None
 model_xn = None
 projectref = None
+jobref = None
 
 def scan(sourcename, servername, inputfile, outputfile):
 
@@ -50,12 +51,126 @@ def scan(sourcename, servername, inputfile, outputfile):
 		found, i = read_job(ls, i)
 		if found:
 			continue
+		found, i = read_step(ls, i)
+		if found:
+			continue
 		i += 1
 	#tree = ET.ElementTree(model_xn)
 	#tree.write(outputfile)
 	with open(outputfile, 'w') as f:
 		f.write(minidom.parseString(ET.tostring(model_xn, 'utf-8')).toprettyxml(indent='\t'))
 	
+def read_step(ls, i):
+	start_i = i
+	while True:
+		m = re.search('^\\s*/\\*|^\\s*$', ls[i])
+		if not m:
+			break
+		i += 1		
+	m = re.search('^\\s*(NT_JOB|LINUX_JOB|AIX_JOB)\\s+(.*?)(\\s|$)', ls[i])
+	if not m:
+		return False, i
+	o = {'type': 'DI Step', 'name': m.group(2), 'desc': '', 'notes': ''}
+	o['ext'] = m.group(1)
+	o['ref'] = jobref + '/' + m.group(2)
+	o['pref'] = jobref
+	m = re.search('\\s*LONGNAME\\((.*)\\)', ls[i])
+	if m:
+		o['tag'] = m.group(1)
+	for j in range (start_i, i):
+		m = re.search('^\\s*/\\*', ls[j])
+		if m:
+			o['desc'] = o['desc'] + ls[j]		
+	schedule_p = {'type': 'Schedule', 'ptype': 'DI Step', 'pref': o['ref'], 'value': ''}
+	while True:
+		i += 1
+		if i >= len(ls):
+			break
+		m = re.search('^\\s*/\\*', ls[i])
+		if m:
+			o['desc'] = o['desc'] + ls[i]		
+			continue
+		m = re.search('^\\s*CMDNAME\\s.*', ls[i])
+		if m:
+			o['CMDNAME'] = m.group(0)
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*ARGS\\s.*', ls[i])
+		if m:
+			o['ARGS'] = m.group(0)
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*SCRIPTNAME\\s.*', ls[i])
+		if m:
+			o['SCRIPTNAME'] = m.group(0)
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*(DUEOUT|EARLYSUB)\\s', ls[i])
+		if m:
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*(RUN|NORUN)\\s', ls[i])
+		if m:
+			schedule_p['value'] = schedule_p['value'] + ls[i]
+			continue
+		m = re.search('^\\s*RESOURCE ADD\\((.*)\\)', ls[i])
+		if m:
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*ENVAR\\s+(.*)', ls[i])
+		if m:
+			o['notes'] = o['notes'] + ls[i]
+			continue
+		m = re.search('^\\s*AGENT\\s+(.*)\\s', ls[i])
+		if m:
+			p = {'type': 'Location', 'ptype': 'DI Step', 'pref': None, 'value': m.group(1)}
+			add2xml(model_xn, 'property', p)
+			continue
+		m = re.search('^\\s*ENDJOB\\s', ls[i])
+		if m:
+			i += 1
+			break
+#		m = re.search('^\\s*RELEASE\\s+ADD\\((.*)\\)', ls[i])
+#		if m:
+#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': o['ref']}
+#			p['vref'] = jobref + '/' + m.group(1)
+#			add2xml(model_xn, 'property', p)
+#			continue
+#		m = re.search('^\\s*RUN\\s+REF\\s+(.*)\\s', ls[i])
+#		if m:
+#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+#			add2xml(model_xn, 'property', p)
+#			continue
+#		m = re.search('^\\s*AFTER\\s+(.*)\\s', ls[i])
+#		if m:
+#			p = {'type': 'Next', 'ptype': 'DI Step', 'pref': None, 'vref': jobref + '/' + m.group(1)}
+#			add2xml(model_xn, 'property', p)
+#			continue		
+#		m = re.search('^\\s*TEMPLATE\\s+(.*)', ls[i])
+#		if m:
+#			p = {'type': 'Template', 'ptype': 'DI Step', 'pref': o['ref']}
+#			p['value'] = m.group(1)
+#			add2xml(model_xn, 'property', p)
+#			continue
+	o['contents'] = []
+	if 'CMDNAME' in o:
+		if 'ARGS' in o:
+			o['contents'].append(o['CMDNAME'] + ' ' + o['ARGS'])
+		else:
+			o['contents'].append(o['CMDNAME'])
+		del o['CMDNAME'] 
+	if 'SCRIPTNAME' in o:
+		if 'ARGS' in o:
+			o['contents'].append(o['SCRIPTNAME'] + ' ' + o['ARGS'])
+		else:
+			o['contents'].append(o['SCRIPTNAME'])
+		del o['SCRIPTNAME']		
+	if 'ARGS' in o:
+		del o['ARGS']	
+	add2xml(model_xn, 'object', o)	
+	add2xml(model_xn, 'property', schedule_p)
+	return True, i
+
 def read_job(ls, i):
 	start_i = i
 	while True:
@@ -67,18 +182,22 @@ def read_job(ls, i):
 	if not m:
 		return False, i
 	o = {'type': 'DI Job', 'name': m.group(1), 'desc': '', 'notes': ''}
-	o['ref'] = projectref + '/' + m.group(1)
+	global jobref
+	jobref = projectref + '/' + m.group(1)
+	o['ref'] = jobref
 	o['pref'] = projectref
-	last_i = i
-	for i in range(start_i, last_i):
-		m = re.search('^\\s*/\\*', ls[i])
+	for j in range (start_i, i):
+		m = re.search('^\\s*/\\*', ls[j])
 		if m:
-			o['desc'] = o['desc'] + ls[i]
-	i = last_i
+			o['desc'] = o['desc'] + ls[j]		
 	while True:
 		i += 1
 		if i >= len(ls):
 			break
+		m = re.search('^\\s*/\\*', ls[i])
+		if m:
+			o['desc'] = o['desc'] + ls[i]		
+			continue
 		m = re.search('^\\s{4}|^\s*$', ls[i])
 		if m:
 			continue
@@ -90,6 +209,16 @@ def read_job(ls, i):
 	add2xml(model_xn, 'object', o)
 	return True, i
 
+def read_comment(ls, i, o):
+	while True:
+		if i >= len(ls):
+			break
+		m = re.search('^\\s*/\\*', ls[i])
+		if m:
+			o['desc'] = o['desc'] + ls[i]			
+		i += 1
+	return i
+	
 def read_event(ls, i):
 	m = re.search('^\\s*EVENT\\s', ls[i])
 	if not m:
@@ -152,7 +281,11 @@ def add2xml(parent_xn, xn_name, e):
 	xn = ET.SubElement(parent_xn, xn_name)
 	for k,v in e.iteritems():
 		if v:
-			ET.SubElement(xn, k).text = v
+			if isinstance(v, list):
+				for v_ in v:
+					ET.SubElement(xn, k).text = v_
+			else:
+				ET.SubElement(xn, k).text = v
 	return
 
 scan(sourcename=None, servername=None , inputfile='./_spec/IDP1COD$.txt', outputfile='./_spec/test2.txt')
