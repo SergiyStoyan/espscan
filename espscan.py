@@ -31,11 +31,6 @@ def scan(sourcename, servername, inputfile, outputfile):
 	model_xn.set('xslt-version', xsltversion)
 	model_xn.set('implicit-types', 'yes')
 
-	#object = namedtuple('object', 'type ptype name tag ext desc contents notes order version pdate pname edate ename ref pref')
-	#property = namedtuple('property', 'type ptype name value vref ref pref')
-	#relation = namedtuple('relation', 'type rtype reltype desc contents ref relref')
-	#scheduletype = {'RUN': 'Schedule', 'NORUN': 'Unschedule'}
-
 	e = {'type': 'DI Repository', 'name': servername, 'tag': sourcename, 'desc': 'CA WA ESP Edition', 'ref': repositoryref}
 	add2xml(model_xn, 'object', e)
 	
@@ -58,25 +53,24 @@ def scan(sourcename, servername, inputfile, outputfile):
 		if found:
 			continue
 		i += 1
-	p_xns = model_xn.findall('property')
-	o_xns = model_xn.findall('object')
-	for p_xn in p_xns:
-		if p_xn.find('pref'):
+	for p_xn in model_xn.findall('property'):
+		v = p_xn.find('pref')
+		if v != None:
 			continue
 		if p_xn.find('type').text != 'Next':
 			continue
+		#print '1-' + ET.tostring(p_xn)
 		p_vref = re.sub('^.*/', '', p_xn.find('vref').text)
-		print '1-' + p_vref
-		for o_xn in o_xns:
+		for o_xn in model_xn.findall('object'):
 			if o_xn.find('name').text == p_vref:
-				ET.SubElement(p_xn, 'pref').text = o_xn.find('ref').text
-				print '2-' + o_xn.find('ref').text
+				pref_xn = ET.SubElement(p_xn, 'pref')
+				pref_xn.text = o_xn.find('ref').text
+				#print '2-' + ET.tostring(p_xn)
 				break
 	#tree = ET.ElementTree(model_xn)
 	#tree.write(outputfile)
 	with open(outputfile, 'w') as f:
 		f.write(minidom.parseString(ET.tostring(model_xn, 'utf-8')).toprettyxml(indent='\t'))
-
 
 def read_FILE_TRIGGER(ls, i):
 	start_i = i
@@ -353,9 +347,9 @@ def add2xml(parent_xn, xn_name, e):
 		if v:
 			if isinstance(v, list):
 				for v_ in v:
-					ET.SubElement(xn, k).text = v_
+					ET.SubElement(xn, k).text = v_.strip()
 			else:
-				ET.SubElement(xn, k).text = v
+				ET.SubElement(xn, k).text = v.strip()
 	return
 
 scan(sourcename=None, servername=None , inputfile='./_spec/IDP1COD$.txt', outputfile='./_spec/test2.txt')
